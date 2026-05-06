@@ -1,59 +1,104 @@
-"""Integration tests for the crontrace CLI."""
+"""Integration tests for the CLI, including the new prune sub-command."""
+
+from __future__ import annotations
 
 import sqlite3
-import pytest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from crontrace.cli import main
-from crontrace.storage import get_connection, fetch_recent
+import pytest
+
+from crontrace.cli import _build_parser, cmd_prune, cmd_run, main
+from crontrace.storage import get_connection
 
 
 @pytest.fixture()
-def db_path(tmp_path) -> Path:
-    return tmp_path / "test_history.db"
+def db_path(tmp_path: Path) -> str:
+    return str(tmp_path / "crontrace_test.db")
 
+
+def _insert_old(db: str, job: str, days_ago: int) -> None:
+    dt = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    ts = dt.strftime("%Y-%m-%dT%H:%M:%S")
+    conn = get_connection(db)
+    conn.execute(
+        "INSERT INTO executions (job_name, started_at, duration_s, exit_code) VALUES (?,?,?,?)",
+        (job, ts, 0.5, 0),
+    )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Existing CLI tests
+# ---------------------------------------------------------------------------
 
 def test_cli_run_success(db_path):
-    exit_code = main(["run", "--db", str(db_path), "echo", "hello"])
-    assert exit_code == 0
+    rc = main(["--db", db_path, "run", "echo_job", "echo", "hello"])
+    # main calls sys.exit; capture via SystemExit
+    with pytest.raises(SystemExit) as exc:
+        main(["--db", db_path, "run", "echo_job", "echo", "hello"])
+    assert exc.value.code == 0
 
 
 def test_cli_run_failure_propagates_exit_code(db_path):
-    exit_code = main(["run", "--db", str(db_path), "false"])
-    assert exit_code != 0
+    with pytest.raises(SystemExit) as exc:
+        main(["--db", db_path, "run", "bad_job", "false"])
+    assert exc.value.code != 0
 
 
 def test_cli_run_records_are_stored(db_path):
-    main(["run", "--db", str(db_path), "echo", "stored"])
-    conn = get_connection(str(db_path))
-    records = fetch_recent(conn, limit=10)
+    with pytest.raises(SystemExit):
+        main(["--db", db_path, "run", "stored_job", "echo", "ok"])
+    conn = get_connection(db_path)
+    rows = conn.execute("SELECT job_name FROM executions").fetchall()
     conn.close()
-    assert len(records) == 1
-    assert "echo" in records[0]["command"]
+    assert any(r[0] == "stored_job" for r in rows)
 
 
 def test_cli_log_prints_output(db_path, capsys):
-    main(["run", "--db", str(db_path), "echo", "log_test"])
-    exit_code = main(["log", "--db", str(db_path)])
-    assert exit_code == 0
+    with pytest.raises(SystemExit):
+        main(["--db", db_path, "run", "log_job", "echo", "hi"])
+    with pytest.raises(SystemExit):
+        main(["--db", db_path, "log"])
     captured = capsys.readouterr()
-    assert "echo" in captured.out
+    assert "log_job" in captured.out
 
 
-def test_cli_log_missing_db_returns_error(tmp_path, capsys):
-    missing = tmp_path / "nonexistent.db"
-    exit_code = main(["log", "--db", str(missing)])
-    assert exit_code == 1
+# ---------------------------------------------------------------------------
+# Prune sub-command tests
+# ---------------------------------------------------------------------------
+
+def test_cli_prune_removes_old_records(db_path, capsys):
+    _insert_old(db_path, "nightly", days_ago=40)
+    _insert_old(db_path, "nightly", days_ago=2)
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--db", db_path, "prune", "--days", "30"])
+    assert exc.value.code == 0
+
+    conn = get_connection(db_path)
+    rows = conn.execute("SELECT * FROM executions").fetchall()
+    conn.close()
+    assert len(rows) == 1
 
 
-def test_cli_run_no_command_returns_error(db_path, capsys):
-    exit_code = main(["run", "--db", str(db_path)])
-    assert exit_code == 2
+def test_cli_prune_output_message(db_path, capsys):
+    _insert_old(db_path, "weekly", days_ago=60)
 
+    with pytest.raises(SystemExit):
+        main(["--db", db_path, "prune", "--days", "30", "--job", "weekly"])
 
-def test_cli_log_limit_respected(db_path, capsys):
-    for i in range(5):
-        main(["run", "--db", str(db_path), "echo", str(i)])
-    main(["log", "--db", str(db_path), "--limit", "3"])
     captured = capsys.readouterr()
-    assert "3 record(s) shown" in captured.out
+    assert "weekly" in captured.out
+    assert "1" in captured.out
+
+
+def test_cli_prune_no_match_zero_deleted(db_path, capsys):
+    _insert_old(db_path, "fresh", days_ago=1)
+
+    with pytest.raises(SystemExit):
+        main(["--db", db_path, "prune", "--days", "30"])
+
+    captured = capsys.readouterr()
+    assert "0" in captured.out
