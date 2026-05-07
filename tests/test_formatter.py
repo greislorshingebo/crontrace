@@ -55,6 +55,17 @@ def test_format_row_failed_command():
     assert "FAIL" in row
 
 
+def test_format_row_returns_string():
+    """format_row should always return a plain string."""
+    record = {
+        "started_at": "2024-01-15 08:00:00",
+        "command": "echo hello",
+        "exit_code": 0,
+        "duration_seconds": 0.042,
+    }
+    assert isinstance(format_row(record), str)
+
+
 def test_format_table_empty():
     output = format_table([])
     assert "no records found" in output
@@ -69,6 +80,15 @@ def test_format_table_contains_all_records():
     assert "job_a" in output
     assert "job_b" in output
     assert "2 record(s) shown" in output
+
+
+def test_format_table_single_record_count():
+    """format_table should report exactly 1 record when given a single entry."""
+    records = [
+        {"started_at": "2024-01-15 08:00:00", "command": "job_a", "exit_code": 0, "duration_seconds": 1.0},
+    ]
+    output = format_table(records)
+    assert "1 record(s) shown" in output
 
 
 def test_format_table_custom_title():
