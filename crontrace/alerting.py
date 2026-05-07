@@ -58,10 +58,31 @@ def check_avg_duration(
     return None
 
 
+def check_consecutive_failures(rows: Sequence, limit: int = 3) -> dict | None:
+    """Return an alert dict if the most recent *limit* runs all failed.
+
+    Rows are assumed to be ordered oldest-first (as returned by a
+    ``SELECT … ORDER BY started_at ASC`` query).  Only the tail of the
+    sequence is examined, so a single recent success clears the alert.
+    """
+    if len(rows) < limit:
+        return None
+    recent = rows[-limit:]
+    if all(r["exit_code"] != 0 for r in recent):
+        return {
+            "type": "consecutive_failures",
+            "value": limit,
+            "threshold": limit,
+            "message": f"Last {limit} consecutive runs all failed",
+        }
+    return None
+
+
 def evaluate_alerts(
     rows: Sequence,
     failure_rate_threshold: float = DEFAULT_FAILURE_RATE_THRESHOLD,
     duration_threshold_s: float = DEFAULT_DURATION_THRESHOLD_S,
+    consecutive_failures_limit: int = 3,
 ) -> list[dict]:
     """Run all checks and return a (possibly empty) list of alert dicts."""
     alerts = []
@@ -71,4 +92,7 @@ def evaluate_alerts(
     dur = check_avg_duration(rows, duration_threshold_s)
     if dur:
         alerts.append(dur)
+    cf = check_consecutive_failures(rows, consecutive_failures_limit)
+    if cf:
+        alerts.append(cf)
     return alerts
