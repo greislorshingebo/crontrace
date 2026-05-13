@@ -66,3 +66,10 @@ def test_should_notify_does_not_mutate_state(conn):
     set_last_code(conn, "my_job", 0, TS)
     should_notify(conn, "my_job", 1)  # different code — but we don't persist here
     assert get_last_code(conn, "my_job") == 0
+
+
+@pytest.mark.parametrize("exit_code", [1, 2, 127, 255])
+def test_should_notify_true_for_any_nonzero_code_when_previously_success(conn, exit_code):
+    """Any non-zero exit code after a prior success should trigger a notification."""
+    set_last_code(conn, "my_job", 0, TS)
+    assert should_notify(conn, "my_job", exit_code) is True
