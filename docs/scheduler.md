@@ -51,6 +51,19 @@ for ts in describe_schedule("*/30 * * * *", n=5):
     print(ts)
 ```
 
+### `time_until_next_run(expression, base=None) -> timedelta`
+
+Returns a `timedelta` representing how long until the next scheduled run
+after *base* (defaults to now). Useful for displaying countdowns or
+implementing sleep-based scheduling loops.
+
+```python
+from crontrace.scheduler import time_until_next_run
+
+delta = time_until_next_run("0 9 * * 1")
+print(f"Next run in {delta.seconds // 3600}h {(delta.seconds % 3600) // 60}m")
+```
+
 ---
 
 ## `crontrace.schedule_store`
