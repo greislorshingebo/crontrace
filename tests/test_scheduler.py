@@ -53,6 +53,13 @@ def test_next_run_raises_on_invalid_expression():
         next_run("bad expr")
 
 
+def test_next_run_hourly_advances_one_hour():
+    """For '0 * * * *', the next run from HH:00:00 should be exactly one hour later."""
+    base = datetime(2024, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
+    result = next_run("0 * * * *", base=base)
+    assert result == datetime(2024, 3, 10, 9, 0, 0, tzinfo=timezone.utc)
+
+
 # ---------------------------------------------------------------------------
 # prev_run
 # ---------------------------------------------------------------------------
@@ -66,6 +73,13 @@ def test_prev_run_is_before_base():
 def test_prev_run_raises_on_invalid_expression():
     with pytest.raises(ValueError):
         prev_run("bad expr")
+
+
+def test_prev_run_hourly_retreats_one_hour():
+    """For '0 * * * *', the previous run from HH:00:00 should be exactly one hour earlier."""
+    base = datetime(2024, 3, 10, 8, 0, 0, tzinfo=timezone.utc)
+    result = prev_run("0 * * * *", base=base)
+    assert result == datetime(2024, 3, 10, 7, 0, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
