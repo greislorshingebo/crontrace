@@ -83,4 +83,16 @@ def test_render_table_contains_header():
 def test_render_row_truncates_long_job_name():
     long_name = "a" * 40
     row = render_archive_row(_entry(job_name=long_name))
-    assert "…" in row
+    assert "\u2026" in row
+
+
+def test_render_table_single_record_count():
+    """A single entry should report '1 record(s)', not '0' or '2'."""
+    table = render_archive_table("backup-db", [_entry()])
+    assert "1 record(s)" in table
+
+
+def test_render_table_does_not_show_placeholder_when_rows_present():
+    """The 'no archived records' placeholder must not appear when rows exist."""
+    table = render_archive_table("backup-db", [_entry()])
+    assert "no archived records" not in table
