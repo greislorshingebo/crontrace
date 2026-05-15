@@ -20,6 +20,15 @@ def conn():
     c.close()
 
 
+@pytest.fixture()
+def conn_with_snapshots(conn):
+    """Connection pre-populated with a small set of snapshots for reuse."""
+    save_snapshot(conn, "job_a", 0, 1.0, "output_a", _TS)
+    save_snapshot(conn, "job_b", 1, 2.5, "output_b", _TS)
+    save_snapshot(conn, "job_c", 2, None, None, _TS)
+    return conn
+
+
 def test_get_snapshot_returns_none_when_missing(conn):
     assert get_snapshot(conn, "backup") is None
 
@@ -75,6 +84,18 @@ def test_list_snapshots_returns_all_ordered(conn):
     save_snapshot(conn, "aaa", 1, 2.0, None, _TS)
     names = [s["job_name"] for s in list_snapshots(conn)]
     assert names == ["aaa", "zzz"]
+
+
+def test_list_snapshots_count(conn_with_snapshots):
+    """list_snapshots returns one entry per saved job."""
+    assert len(list_snapshots(conn_with_snapshots)) == 3
+
+
+def test_list_snapshots_contains_all_fields(conn_with_snapshots):
+    """Each entry returned by list_snapshots exposes the expected keys."""
+    expected_keys = {"job_name", "exit_code", "duration", "stdout", "captured_at"}
+    for snap in list_snapshots(conn_with_snapshots):
+        assert expected_keys <= snap.keys()
 
 
 def test_snapshot_stdout_can_be_none(conn):
